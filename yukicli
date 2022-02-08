@@ -66,7 +66,11 @@ function readFileCallback(sourcePath) {
 
     if (fs.existsSync(prefixedSourcePath)) {
       try {
-        return {'contents': fs.readFileSync(prefixedSourcePath).toString('utf8')}
+        ret= {'contents': fs.readFileSync(prefixedSourcePath).toString('utf8')};
+        sources2[sourcePath] = {
+          content: fs.readFileSync(prefixedSourcePath).toString('utf8')
+        };
+        return ret;
       } catch (e) {
         return {error: 'Error reading ' + prefixedSourcePath + ': ' + e};
       }
@@ -122,7 +126,21 @@ var callbacks = undefined
 if (options.basePath || !options.standardJson)
   callbacks = {'import': readFileCallback};
 
-if (files.length === 0) {
+  if (options.standardJson) {
+    if(files.length==0){
+      console.error('Must provide a file');
+      process.exit(1);
+    }
+    var input = fs.readFileSync(files[0]).toString('utf8');
+    if (program.verbose)
+      console.log('>>> Compiling:\n' + reformatJsonIfRequested(input) + "\n")
+    var output = reformatJsonIfRequested(solc.compile(input, callbacks));
+  
+    if (program.verbose)
+      console.log('>>> Compilation result:')
+    console.log(output);
+    process.exit(0);
+  } else if (files.length === 0) {
   console.error('Must provide a file');
   process.exit(1);
 }
@@ -141,12 +159,18 @@ if (options.includePath)
       abort('Empty values are not allowed in --include-path.');
 
 var sources = {};
+var sources2 = {};
 
 for (var i = 0; i < files.length; i++) {
   try {
     sources[makeSourcePathRelativeIfPossible(files[i])] = {
       content: fs.readFileSync(files[i]).toString()
     };
+
+    sources2[makeSourcePathRelativeIfPossible(files[i])] = {
+      content: fs.readFileSync(files[i]).toString()
+    };
+
   } catch (e) {
     abort('Error reading ' + files[i] + ': ' + e);
   }
@@ -167,6 +191,23 @@ const cliInput = {
   },
   sources: sources
 };
+
+const cliInput2 = {
+  language: 'Solidity',
+  settings: {
+    optimizer: {
+      enabled: options.optimize,
+      runs: options.optimizeRuns,
+    },
+    outputSelection: {
+      '*': {
+        '*': [ 'abi', 'evm.bytecode' ]
+      }
+    }
+  },
+  sources: sources2
+};
+
 if (program.verbose)
   console.log('>>> Compiling:\n' + toFormattedJson(cliInput) + "\n")
 var output = JSON.parse(solc.compile(JSON.stringify(cliInput), callbacks));
@@ -213,7 +254,7 @@ for (var fileName in output.contracts) {
   }
 }
 
-writeFile('StandardJSON.json', reformatJsonIfRequested(JSON.stringify(cliInput)));
+writeFile('StandardJSON.json', reformatJsonIfRequested(JSON.stringify(cliInput2)));
 
 // Put back original exception handlers.
 originalUncaughtExceptionListeners.forEach(function (listener) {
